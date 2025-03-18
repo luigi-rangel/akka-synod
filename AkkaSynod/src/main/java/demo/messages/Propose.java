@@ -1,6 +1,6 @@
 package demo.messages;
 
-public class Propose {
+public class Propose implements Operation {
 	public int input;
 	
 	public Propose(int input) {

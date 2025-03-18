@@ -1,0 +1,9 @@
+demo\actors\Process.class
+demo\messages\References.class
+demo\messages\Read.class
+demo\messages\Propose.class
+demo\actors\types\State.class
+demo\AkkaSynod.class
+demo\messages\Launch.class
+demo\messages\Abort.class
+demo\messages\Gather.class
