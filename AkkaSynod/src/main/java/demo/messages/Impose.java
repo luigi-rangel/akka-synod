@@ -1,6 +1,7 @@
 package demo.messages;
 
 public class Impose {
+	
 	public int ballot;
 	public int v;
 	
@@ -8,4 +9,10 @@ public class Impose {
 		this.ballot = ballot;
 		this.v = proposal;
 	}
+	
+	@Override
+	public String toString() {
+		return Impose.class.getSimpleName() + " (ballot=" + ballot + ", proposal=" + v + ")";
+	}
+
 }

@@ -1,8 +1,6 @@
 package demo.actors;
 
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 import akka.actor.ActorRef;
 import akka.actor.Props;
@@ -17,34 +15,41 @@ import demo.messages.Decide;
 import demo.messages.Gather;
 import demo.messages.Impose;
 import demo.messages.Launch;
-import demo.messages.Operation;
-import demo.messages.Propose;
 import demo.messages.Read;
 import demo.messages.References;
 
 public class Process extends UntypedAbstractActor {
-	final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 	
-	private boolean operating = false;
-	private boolean faultProne = false;
-	private double alpha;
-	private boolean silentMode = false;
-	private Queue<Object> operationsList = new LinkedBlockingQueue<>(); // needs better name ig
+	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
+
+	private final int i;
 	
-	private List<ActorRef> refs;
-	private int i;
-	private int n;
-	private int input;
+	// initialized
+	private List<ActorRef> processes = null;
+	private int n = -1;
 	
-	private Integer proposal;
-	private int ballot;
+	// launched
+	private Integer input = null;
+	private int ballot = -1;
+	private int proposal = -1;
 	private State state = new State();
-	private int readBallot = 0;
-	private int imposeBallot = 0;
-	private int estimate;
-	private int totalAcks;
+	private int acksCount = 0;
+	
+	// use to respond
+	private int readBallot = -1;
+	private int imposeBallot = -1;
+	private int estimate = -1;
+	
+	// state
+	private boolean faultProne = false;
+	private double alpha = 0;
+	private boolean silentMode = false;
+	private Integer decided = null;
 	
 	public Process(int i) {
+		if(i < 0) {
+			throw new IllegalArgumentException("Expected non-negative process id, but received id="+ i + ".");
+		}
 		this.i = i;
 	}
 
@@ -55,8 +60,8 @@ public class Process extends UntypedAbstractActor {
     }
 
     @Override
-    public void onReceive(Object msg) throws Throwable {
-        log.info(this.getSender().toString() + " sent '" + msg.toString() + "'");
+    public void onReceive(Object msg) {
+        log.info("Process " + getSender().path().name() + " to " + getName() + ": [" + msg.toString() + "].");
         
         if(silentMode) return;
         if(faultProne && Math.random() > this.alpha) {
@@ -65,124 +70,180 @@ public class Process extends UntypedAbstractActor {
         }
         
         if(msg instanceof References) {
-        	this.setReferences((References) msg);
+        	setReferences((References) msg);
         } else if(msg instanceof Launch) {
-        	this.launch();
-        } else if(msg instanceof Operation) {
-        	operationsList.add(msg);
-        	if(operating) return;
-        	this.operate(operationsList.poll());
+        	launch();
+        } else if(msg instanceof Crash) {
+        	crash((Crash) msg);
         } else if(msg instanceof Read) {
-        	this.read((Read) msg);
+        	read((Read) msg);
         } else if(msg instanceof Abort) {
-        	this.abort((Abort) msg);
+        	abort((Abort) msg);
         } else if(msg instanceof Gather) {
-        	this.gather((Gather) msg);
+        	gather((Gather) msg);
         } else if(msg instanceof Impose) {
-        	this.impose((Impose) msg);
+        	impose((Impose) msg);
         } else if(msg instanceof Ack) {
-        	this.ack((Ack) msg);
+        	ack((Ack) msg);
         } else if(msg instanceof Decide) {
-        	this.decide((Decide) msg);
+        	decide((Decide) msg);
         }
     }
 
 	private void setReferences(References msg) {
-    	refs = msg.processes;
-    	n = refs.size();
+    	if(isInitialized()) {
+    		throw new RuntimeException("References already initialized.");
+    	}
+		// validate references -->
+		boolean foundSelf = false;
+		for(ActorRef actor : msg.processes) {
+			if(getSelf().equals(actor)) {
+				foundSelf = true;
+				break;
+			}
+		}
+		if(!foundSelf) {
+			throw new IllegalArgumentException("Own actor not in references.");
+		}
+		// <--
+		log.info("Process " + getName() + " sets references.");
+		
+    	processes = msg.processes;
+    	n = processes.size();
     }
     
     private void launch() {
+    	if(!isInitialized()) {
+    		throw new RuntimeException("References have not been initialized.");
+    	}
+    	if(isLaunched()) {
+    		throw new RuntimeException("Process already launched.");
+    	}
+		log.info("Launch process " + getName() + ".");
     	input = Math.random() > 0.5 ? 1 : 0;
     	ballot = i - n;
-    	
-    	this.self().tell(new Propose(input), this.getSelf());
+    	propose();
     }
     
-    private void operate(Object msg) {
-    	this.operating = true;
-    	
-    	if(msg instanceof Propose) {
-    		this.propose((Propose) msg);
-    	} else if (msg instanceof Crash){
-    		this.crash((Crash) msg);
-    	}
-    }
-
-	private void propose(Propose msg) {
-    	proposal = msg.input;
+	private void propose() {
+		assertLaunched();
+		if(decided != null) {
+			return;
+		}
+		log.info("Process " + getName() + " proposes " + input);
+    	proposal = input;
     	ballot += n;
     	state = new State();
-    	totalAcks = 0;
-    	
-    	for(int i = 0; i < n; ++i) {
-    		refs.get(i).tell(new Read(ballot), getSelf());
-    	}
+    	acksCount = 0;
+    	sendToAll(new Read(ballot));
     }
-	
-	private void crash(Crash msg) {
-		this.faultProne = true;
-		this.alpha = msg.alpha;
-		
-		getSelf().tell(operationsList.poll(), getSelf());
-    	this.operating = false;
-	}
     
     private void read(Read msg) {
 		if(readBallot > msg.ballot || imposeBallot > msg.ballot) {
-			this.getSender().tell(new Abort(msg.ballot), getSelf());
+			sendToSender(new Abort(msg.ballot));
 		} else {
 			readBallot = msg.ballot;
-			this.getSender().tell(new Gather(msg.ballot, imposeBallot, estimate), getSender());
+			sendToSender(new Gather(msg.ballot, imposeBallot, estimate));
 		}
 	}
     
     private void abort(Abort msg) {
-    	log.info(this.toString() + " aborted!");
-    	
-    	this.operating = false;
-    	this.self().tell(new Propose(input), this.getSelf());
+    	if(ballot == msg.ballot) { // implies launched
+        	log.info("Process " + getName() + " aborted!");
+        	// abortion is implicit by restarting the proposal
+        	propose();
+    	}
     }
     
     private void gather(Gather msg) {
-    	if(state.gather(msg.imposeBallot, msg.estimate) > n / 2) {
-    		proposal = state.estimate != null ? state.estimate : proposal;
-    		
-    		for(int i = 0; i < n; ++i) {
-    			this.refs.get(i).tell(new Impose(ballot, proposal), getSelf());
-    		}
+    	if(decided != null) {
+    		return;
+    	}
+    	if(ballot == msg.ballot) { // implies launched
+    		int gatheredResponses = state.gather(msg.imposeBallot, msg.estimate);
+	    	if(gatheredResponses > n / 2) {
+	    		proposal = state.estimate != null ? state.estimate : proposal;
+	    		state = new State();
+	    		sendToAll(new Impose(ballot, proposal));
+	    	}
     	}
     }
     
     private void impose(Impose msg) {
     	if(readBallot > msg.ballot || imposeBallot > msg.ballot) {
-			this.getSender().tell(new Abort(msg.ballot), getSelf());
+    		sendToSender(new Abort(msg.ballot));
 		} else {
-			this.estimate = msg.v;
-			this.imposeBallot = msg.ballot;
-			this.getSender().tell(new Ack(msg.ballot), getSender());
+			estimate = msg.v;
+			imposeBallot = msg.ballot;
+			sendToSender(new Ack(msg.ballot));
 		}
     }
     
     private void ack(Ack msg) {
-    	totalAcks++;
-    	
-    	if(totalAcks > n / 2) {
-    		for(int i = 0; i < n; ++i) {
-    			this.refs.get(i).tell(new Decide(proposal), getSelf());
-    		}
+    	if(decided != null) {
+    		return;
+    	}
+    	if(ballot == msg.ballot) { // implies launched
+        	acksCount++;
+        	if(acksCount > n / 2) {
+        		sendToAll(new Decide(proposal));
+        	}
     	}
     }
 
 	private void decide(Decide msg) {
-		// ??????????? implemented according to the reference. don't think it works...
-		for(int i = 0; i < n; ++i) {
-			this.refs.get(i).tell(new Decide(proposal), getSelf());
+		if(decided != null) {
+			if(decided.intValue() == msg.v) {
+				return;
+			} else {
+				throw new RuntimeException("Cannot decide on value " + msg.v + ". Already decieded on " + decided);
+			}
 		}
-		
-		log.info(this.toString() + " decided on " + msg.v);
-		
-		this.operating = false;
-		getSelf().tell(operationsList.poll(), getSelf());
+		decided = msg.v;
+		log.info("Process " + getName() + " decided on " + decided + ".");
+		sendToAll(new Decide(decided));
 	}
+	
+	private void crash(Crash msg) {
+		/*
+		this.faultProne = true;
+		this.alpha = msg.alpha;
+		
+		sendToSelf(pendingOperations.poll());
+    	this.operating = false;
+    	*/
+	}
+	
+	
+	
+	// ----- HELPER FUNCTIONS -----
+	
+	private void sendToSender(Object msg) {
+		getSender().tell(msg, getSelf());
+	}
+	
+	private void sendToAll(Object msg) {
+		for(ActorRef actor : processes) {
+			actor.tell(msg, getSelf());
+		}
+	}
+	
+	private String getName() {
+		return getSelf().path().name();
+	}
+	
+	private boolean isInitialized() {
+		return processes != null;
+	}
+	
+	private boolean isLaunched() {
+		return input != null;
+	}
+	
+	private void assertLaunched() {
+		if(!isLaunched()) {
+			throw new RuntimeException("Process has not been launched yet.");
+		}
+	}
+	
 }

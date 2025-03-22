@@ -14,7 +14,7 @@ public class AkkaSynod {
     public static void main(String[] args) {
         final ActorSystem system = ActorSystem.create("AkkaSynod");
         
-        int n = 1;
+        int n = 2;
         List<ActorRef> actors = new ArrayList<>();
         for(int i = 0; i < n; ++i) {
         	actors.add(system.actorOf(Process.props(i), String.valueOf(i)));
@@ -25,16 +25,26 @@ public class AkkaSynod {
             actor.tell(m, ActorRef.noSender());
         }
         
+        waitFor(50);
+        
         for (ActorRef actor : actors) {
         	actor.tell(new Launch(), ActorRef.noSender());
         }
 
-        waitThenTerminate(system);
+        waitThenTerminate(system, 3000);
     }
     
-    private static void waitThenTerminate(final ActorSystem system) {
+    private static void waitFor(int time) {
 		try {
-			Thread.sleep(10);
+			Thread.sleep(time);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+    }
+    
+    private static void waitThenTerminate(final ActorSystem system, int time) {
+		try {
+			Thread.sleep(time);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} finally {
