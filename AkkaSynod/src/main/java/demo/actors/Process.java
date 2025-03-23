@@ -13,6 +13,7 @@ import demo.messages.Ack;
 import demo.messages.Crash;
 import demo.messages.Decide;
 import demo.messages.Gather;
+import demo.messages.Hold;
 import demo.messages.Impose;
 import demo.messages.Launch;
 import demo.messages.Read;
@@ -35,6 +36,8 @@ public class Process extends UntypedAbstractActor {
 	private State state = new State();
 	private int acksCount = 0;
 	
+	private ActorRef client;
+	
 	// use to respond
 	private int readBallot = -1;
 	private int imposeBallot = -1;
@@ -44,6 +47,7 @@ public class Process extends UntypedAbstractActor {
 	private boolean faultProne = false;
 	private double alpha = 0;
 	private boolean silentMode = false;
+	private boolean holdMode = false;
 	private Integer decided = null;
 	
 	public Process(int i) {
@@ -61,13 +65,17 @@ public class Process extends UntypedAbstractActor {
 
     @Override
     public void onReceive(Object msg) {
-        log.info("Process " + getSender().path().name() + " to " + getName() + ": [" + msg.toString() + "].");
-        
-        if(silentMode) return;
-        if(faultProne && Math.random() > this.alpha) {
+    	
+        if(silentMode) {
+        	return;
+        }
+        if(faultProne && Math.random() < alpha) {
+        	log.debug("Process " + getName() + " failed.");
         	silentMode = true;
         	return;
         }
+        
+        log.debug("Process " + getSender().path().name() + " to " + getName() + ": [" + msg.toString() + "].");
         
         if(msg instanceof References) {
         	setReferences((References) msg);
@@ -75,6 +83,8 @@ public class Process extends UntypedAbstractActor {
         	launch();
         } else if(msg instanceof Crash) {
         	crash((Crash) msg);
+        } else if(msg instanceof Hold) {
+        	hold();
         } else if(msg instanceof Read) {
         	read((Read) msg);
         } else if(msg instanceof Abort) {
@@ -106,7 +116,7 @@ public class Process extends UntypedAbstractActor {
 			throw new IllegalArgumentException("Own actor not in references.");
 		}
 		// <--
-		log.info("Process " + getName() + " sets references.");
+		log.debug("Process " + getName() + " sets references.");
 		
     	processes = msg.processes;
     	n = processes.size();
@@ -119,18 +129,19 @@ public class Process extends UntypedAbstractActor {
     	if(isLaunched()) {
     		throw new RuntimeException("Process already launched.");
     	}
-		log.info("Launch process " + getName() + ".");
+		log.debug("Launch process " + getName() + ".");
     	input = Math.random() > 0.5 ? 1 : 0;
     	ballot = i - n;
+    	client = getSender();
     	propose();
     }
     
 	private void propose() {
 		assertLaunched();
-		if(decided != null) {
+		if(decided != null || silentMode || holdMode) {
 			return;
 		}
-		log.info("Process " + getName() + " proposes " + input);
+		log.debug("Process " + getName() + " proposes " + input);
     	proposal = input;
     	ballot += n;
     	state = new State();
@@ -149,7 +160,7 @@ public class Process extends UntypedAbstractActor {
     
     private void abort(Abort msg) {
     	if(ballot == msg.ballot) { // implies launched
-        	log.info("Process " + getName() + " aborted!");
+        	log.debug("Process " + getName() + " aborted!");
         	// abortion is implicit by restarting the proposal
         	propose();
     	}
@@ -186,6 +197,7 @@ public class Process extends UntypedAbstractActor {
     	if(ballot == msg.ballot) { // implies launched
         	acksCount++;
         	if(acksCount > n / 2) {
+        		client.tell(new Decide(proposal), getSelf());
         		sendToAll(new Decide(proposal));
         	}
     	}
@@ -200,18 +212,17 @@ public class Process extends UntypedAbstractActor {
 			}
 		}
 		decided = msg.v;
-		log.info("Process " + getName() + " decided on " + decided + ".");
+		log.debug("Process " + getName() + " decided on " + decided + ".");
 		sendToAll(new Decide(decided));
 	}
 	
 	private void crash(Crash msg) {
-		/*
-		this.faultProne = true;
-		this.alpha = msg.alpha;
-		
-		sendToSelf(pendingOperations.poll());
-    	this.operating = false;
-    	*/
+		faultProne = true;
+		alpha = msg.alpha;
+	}
+	
+	private void hold() {
+		holdMode = true;
 	}
 	
 	
