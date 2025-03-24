@@ -16,23 +16,51 @@ import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 public class AkkaSynod {
     public static void main(String[] args) {
+    	
+    	int[] N = {3, 10, 100};
+    	double[] ALPHA = {0, 0.1, 1};
+    	int[] TIMEOUT = {500, 1000, 1500, 2000};
+    	
+    	int RUNS = 5;
+    	
+    	try (PrintWriter file = new PrintWriter(new FileWriter("data.csv"))) {
+    		file.println("n,alpha,timeout,duration");
+	    	for(int n : N) {
+	    		for(double alpha : ALPHA) {
+	    			for(int timeout : TIMEOUT) {
+	    				for(int i=0; i<RUNS; i++) {
+	    					file.println(String.format(Locale.US, "%d,%.1f,%d,%d", n, alpha, timeout,(int)run(n, alpha, timeout)));
+	    				}
+	    			}
+	    		}
+	    	}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+        
+    }
+    
+    private static long run(int n, double alpha, int timeout) {
+    	
+    	long duration = 0;
+
         final ActorSystem system = ActorSystem.create("AkkaSynod");
     	final LoggingAdapter log = Logging.getLogger(system, "MAIN");
     	
-        int n = 10;			// N 		= 3, 10, 100
-        int f = (n-1) / 2;	// F 		= 1, 4, 49
-        
-        double alpha = 1;	// alpha 	= 0, 0.1, 1
-        int timeout = 2000;	// timeout	= 500, 1000, 1500, 2000
+        int f = (n-1) / 2;
         
         log.info("Run with n=" + n + ", f=" + f + ", alpha=" + alpha + " and timeout=" + timeout + ".");
         
@@ -83,7 +111,7 @@ public class AkkaSynod {
 			Object result = Await.result(firstCompleted, Duration.create(5, TimeUnit.SECONDS));
 			// stop timing <-----------------
 	        long endTime = System.currentTimeMillis();
-	        long duration = endTime - startTime;
+	        duration = endTime - startTime;
 			if(result instanceof Decide) {
 				log.info("Decided on value " + ((Decide) result).v + " after " + duration + " milliseconds.");
 			} else {
@@ -93,8 +121,9 @@ public class AkkaSynod {
 			e.printStackTrace();
 		}
 
-        waitThenTerminate(system, 1000);
+        waitThenTerminate(system, 10);
         
+        return duration;
     }
     
     private static void waitFor(int time) {
