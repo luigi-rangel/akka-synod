@@ -38,6 +38,7 @@ public class AkkaSynod {
     	
     	try (PrintWriter file = new PrintWriter(new FileWriter("data.csv"))) {
     		file.println("n,alpha,timeout,duration");
+    		run(3, 0, 500); // test run
 	    	for(int n : N) {
 	    		for(double alpha : ALPHA) {
 	    			for(int timeout : TIMEOUT) {
