@@ -46,14 +46,28 @@ def plot_box_diagram_alpha_vs_duration_fixed_n(df, output_dir):
         plt.savefig(f"{output_dir}/alpha_vs_duration_n_{n_val}.png")
         plt.close()
 
-def plot_box_diagram_n_vs_duration(df, output_dir):
+def plot_box_diagram_basic(df, x_param, y_param, output_dir):
     plt.figure(figsize=(6, 4))
-    sns.boxplot(x=df['n'].astype(str), y=df['duration'])
-    plt.title('n vs duration')
-    plt.xlabel('n')
-    plt.ylabel('duration')
-    plt.savefig(f"{output_dir}/n_vs_duration.png")
+    sns.boxplot(x=df[x_param].astype(str), y=df[y_param])
+    plt.title(f'{x_param} vs {y_param}')
+    plt.xlabel(x_param)
+    plt.ylabel(y_param)
+    plt.savefig(f"{output_dir}/{x_param}_vs_{y_param}.png")
     plt.close()
+
+def plot_box_diagram_timeout_and_alpha_vs_duration_fixed_n(df, output_dir):
+    unique_n_values = df['n'].unique()
+    for n_val in unique_n_values:
+        filtered_df = df[df['n'] == n_val]
+        
+        plt.figure(figsize=(8, 6))
+        sns.boxplot(x=filtered_df['timeout'].astype(str), y=filtered_df['duration'], hue=filtered_df['alpha'].astype(str))
+        plt.title(f'timeout vs duration per alpha (n={n_val})')
+        plt.xlabel('timeout')
+        plt.ylabel('duration')
+        plt.legend(title='alpha')
+        plt.savefig(f"{output_dir}/timeout_and_alpha_vs_duration_n_{n_val}.png")
+        plt.close()
 
 def plot_and_save_linediagrams(df, output_dir):
     
@@ -72,7 +86,10 @@ def plot_and_save_box(df, output_dir):
     
     plot_box_diagram_alpha_vs_durationMinusTimeout_fixed_n(df, output_dir)
     plot_box_diagram_alpha_vs_duration_fixed_n(df, output_dir)
-    plot_box_diagram_n_vs_duration(df, output_dir)
+    plot_box_diagram_basic(df, 'n', 'duration', output_dir)
+    plot_box_diagram_basic(df, 'alpha', 'duration', output_dir)
+    plot_box_diagram_basic(df, 'timeout', 'duration', output_dir)
+    plot_box_diagram_timeout_and_alpha_vs_duration_fixed_n(df, output_dir)
 
 df = pd.read_csv('data.csv')
 print('linediagrams...')
