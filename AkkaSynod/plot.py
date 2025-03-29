@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import os
 
-def plot_parameter_vs_duration(df, x_param, fixed_param, color_param, y_param, output_dir):
+def plot_line_diagrams(df, x_param, fixed_param, color_param, y_param, output_dir):
     unique_fixed_values = df[fixed_param].unique()
     for fixed_val in unique_fixed_values:
         filtered_df = df[df[fixed_param] == fixed_val]
@@ -19,15 +19,64 @@ def plot_parameter_vs_duration(df, x_param, fixed_param, color_param, y_param, o
         plt.savefig(f"{output_dir}/{x_param}_vs_{y_param}_{fixed_param}_{fixed_val}.png")
         plt.close()
 
-def plot_and_save(csv_file, output_dir):
-    df = pd.read_csv(csv_file)
+def plot_box_diagram_alpha_vs_durationMinusTimeout_fixed_n(df, output_dir):
+    unique_n_values = df['n'].unique()
+    for n_val in unique_n_values:
+        filtered_df = df[df['n'] == n_val].copy()
+        filtered_df['duration_minus_timeout'] = filtered_df['duration'] - filtered_df['timeout']
+        
+        plt.figure(figsize=(6, 4))
+        sns.boxplot(x=filtered_df['alpha'].astype(str), y=filtered_df['duration_minus_timeout'])
+        plt.title(f'alpha vs duration after timeout (n={n_val})')
+        plt.xlabel('alpha')
+        plt.ylabel('duration - timeout')
+        plt.savefig(f"{output_dir}/alpha_vs_duration_after_timeout_n_{n_val}.png")
+        plt.close()
+
+def plot_box_diagram_alpha_vs_duration_fixed_n(df, output_dir):
+    unique_n_values = df['n'].unique()
+    for n_val in unique_n_values:
+        filtered_df = df[df['n'] == n_val]
+        
+        plt.figure(figsize=(6, 4))
+        sns.boxplot(x=filtered_df['alpha'].astype(str), y=filtered_df['duration'])
+        plt.title(f'alpha vs duration (n={n_val})')
+        plt.xlabel('alpha')
+        plt.ylabel('duration')
+        plt.savefig(f"{output_dir}/alpha_vs_duration_n_{n_val}.png")
+        plt.close()
+
+def plot_box_diagram_n_vs_duration(df, output_dir):
+    plt.figure(figsize=(6, 4))
+    sns.boxplot(x=df['n'].astype(str), y=df['duration'])
+    plt.title('n vs duration')
+    plt.xlabel('n')
+    plt.ylabel('duration')
+    plt.savefig(f"{output_dir}/n_vs_duration.png")
+    plt.close()
+
+def plot_and_save_linediagrams(df, output_dir):
+    
     os.makedirs(output_dir, exist_ok=True)
     
-    plot_parameter_vs_duration(df, 'n', 'alpha', 'timeout', 'duration', output_dir)
-    plot_parameter_vs_duration(df, 'alpha', 'n', 'timeout', 'duration', output_dir)
-    plot_parameter_vs_duration(df, 'n', 'timeout', 'alpha', 'duration', output_dir)
-    plot_parameter_vs_duration(df, 'timeout', 'n', 'alpha', 'duration', output_dir)
-    plot_parameter_vs_duration(df, 'timeout', 'alpha', 'n', 'duration', output_dir)
-    plot_parameter_vs_duration(df, 'alpha', 'timeout', 'n', 'duration', output_dir)
+    plot_line_diagrams(df, 'n', 'alpha', 'timeout', 'duration', output_dir)
+    plot_line_diagrams(df, 'alpha', 'n', 'timeout', 'duration', output_dir)
+    plot_line_diagrams(df, 'n', 'timeout', 'alpha', 'duration', output_dir)
+    plot_line_diagrams(df, 'timeout', 'n', 'alpha', 'duration', output_dir)
+    plot_line_diagrams(df, 'timeout', 'alpha', 'n', 'duration', output_dir)
+    plot_line_diagrams(df, 'alpha', 'timeout', 'n', 'duration', output_dir)
 
-plot_and_save('data.csv', 'plots')
+def plot_and_save_box(df, output_dir):
+
+    os.makedirs(output_dir, exist_ok=True)
+    
+    plot_box_diagram_alpha_vs_durationMinusTimeout_fixed_n(df, output_dir)
+    plot_box_diagram_alpha_vs_duration_fixed_n(df, output_dir)
+    plot_box_diagram_n_vs_duration(df, output_dir)
+
+df = pd.read_csv('data.csv')
+print('linediagrams...')
+plot_and_save_linediagrams(df, 'plots/linediagrams')
+print('boxdiagrams...')
+plot_and_save_box(df, 'plots/boxdiagrams')
+print('done')
